@@ -153,33 +153,99 @@ async function runBot() {
 
     await takeScreenshot(page, 'step1_landing_page');
 
-    // Step 2: Click "Continuer" on GeniusPay Landing Page if present
-    console.error('[BOT_STEP] Checking for Continuer button...');
+    // Step 2: Sélection méthode "Carte" si la page GeniusPay affiche le sélecteur
+    console.error('[BOT_STEP] Selecting Stripe card payment method...');
     await page.waitForTimeout(300);
 
-    const continuerClicked = await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button, a, [role="button"]'));
-      for (const btn of btns) {
-        if ((btn.textContent || '').toLowerCase().includes('continuer')) {
-          btn.click();
-          return true;
+    const methodSelected = await page.evaluate(() => {
+      const form = document.querySelector('form[action*="/pay"]') || document.querySelector('form');
+      let alpine = null;
+      if (window.Alpine && form) alpine = window.Alpine.$data(form);
+      if (!alpine && form && form._x_dataStack) alpine = form._x_dataStack[0];
+      if (!alpine) {
+        let el = form ? form.parentElement : document.querySelector('[x-data]');
+        while (el && !alpine) {
+          if (window.Alpine) alpine = window.Alpine.$data(el);
+          if (!alpine && el._x_dataStack) alpine = el._x_dataStack[0];
+          el = el.parentElement;
         }
       }
-      const target = Array.from(document.querySelectorAll('div, span')).find(el => {
-        const text = (el.textContent || '').trim().toLowerCase();
-        return text === 'continuer →' || text === 'continuer' || text.startsWith('continuer');
-      });
-      if (target) {
-        target.click();
-        return true;
+
+      let selectedInfo = '';
+      if (alpine) {
+        const methods = alpine.paymentMethods || [];
+        const stripeMethod = methods.find(m => m.id === 'stripe' || m.gateway === 'stripe' || (m.name && m.name.toLowerCase().includes('stripe')) || m.type === 'card');
+        if (stripeMethod) {
+          if (typeof alpine.selectMethod === 'function') {
+            alpine.selectMethod(stripeMethod);
+          } else {
+            alpine.selectedMethod = stripeMethod.id;
+          }
+          selectedInfo = 'alpine: ' + stripeMethod.id;
+        }
       }
-      return false;
+
+      const hiddenPM = document.querySelector('input[name="payment_method"]');
+      if (hiddenPM) {
+        hiddenPM.value = 'stripe';
+        hiddenPM.dispatchEvent(new Event('change', { bubbles: true }));
+        hiddenPM.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      const buttons = Array.from(document.querySelectorAll('button, div[class*="cursor"], label'));
+      for (const btn of buttons) {
+        const t = (btn.textContent || '').trim();
+        if ((t.includes('Carte Internationale') || t.includes('Stripe')) && !t.toLowerCase().includes('pays') && t.length < 80) {
+          try { btn.click(); } catch(e){}
+          selectedInfo = selectedInfo || ('dom-clicked: ' + t);
+          break;
+        }
+      }
+
+      return selectedInfo || 'stripe-set';
     }).catch(() => false);
 
-    if (continuerClicked) {
-      console.error('[BOT_STEP] Continuer clicked, waiting for Stripe navigation...');
-      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 6000 }).catch(() => {});
-    }
+    console.error(`[BOT_STEP] Method selected: ${methodSelected || 'none'}`);
+    await page.waitForTimeout(500);
+
+    // Submit method selection
+    await page.evaluate(() => {
+      const form = document.querySelector('form[action*="/pay"]') || document.querySelector('form');
+      let alpine = null;
+      if (window.Alpine && form) alpine = window.Alpine.$data(form);
+      if (!alpine && form && form._x_dataStack) alpine = form._x_dataStack[0];
+      if (!alpine) {
+        let el = form ? form.parentElement : document.querySelector('[x-data]');
+        while (el && !alpine) {
+          if (window.Alpine) alpine = window.Alpine.$data(el);
+          if (!alpine && el._x_dataStack) alpine = el._x_dataStack[0];
+          el = el.parentElement;
+        }
+      }
+      if (alpine) {
+        alpine.selectedMethod = 'stripe';
+        if (typeof alpine.handleSubmit === 'function') {
+          try { alpine.handleSubmit(); return; } catch (e) {}
+        }
+      }
+      const btns = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+      for (const btn of btns) {
+        const t = (btn.textContent || btn.value || '').toLowerCase();
+        if (t.includes('continuer') || t.includes('payer') || (btn.type === 'submit' && !btn.disabled)) {
+          btn.removeAttribute('disabled');
+          btn.click();
+          return;
+        }
+      }
+      if (form) form.submit();
+    }).catch(() => {});
+
+    const urlBefore = page.url();
+    await Promise.race([
+      page.waitForURL(url => url.href !== urlBefore, { timeout: 12000 }),
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 })
+    ]).catch(() => {});
+    await page.waitForTimeout(1500);
 
     await takeScreenshot(page, 'step2_card_option_selected');
 
@@ -187,11 +253,11 @@ async function runBot() {
     console.error('[BOT_STEP] Filling customer profile data...');
     try {
       const emailInput = page.locator('input[type="email"], input[name="email"]').first();
-      if (await emailInput.isVisible().catch(() => false) && email) {
+      if (await emailInput.isVisible({ timeout: 500 }).catch(() => false) && email) {
         await emailInput.fill(email);
       }
       const nameInput = page.locator('input[name="name"], input[name="holder"], input[name="cardholder"]').first();
-      if (await nameInput.isVisible().catch(() => false) && holder_name) {
+      if (await nameInput.isVisible({ timeout: 500 }).catch(() => false) && holder_name) {
         await nameInput.fill(holder_name);
       }
     } catch (e) {}
@@ -200,35 +266,56 @@ async function runBot() {
     console.error('[BOT_STEP] Injecting card number, expiration & CVC...');
     let cardInjected = false;
 
-    // Check frames (Stripe inputs often live in iFrames)
-    const frames = page.frames();
-    for (const frame of frames) {
-      try {
-        const numInput = frame.locator('#cardNumber, input[name="cardNumber"], input[autocomplete="cc-number"], input[id*="cardNumber"], input[name="cardnumber"], input[name="number"]').first();
-        if (await numInput.isVisible().catch(() => false)) {
-          await numInput.click();
-          await numInput.pressSequentially(card_number, { delay: 20 });
-          cardInjected = true;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const frames = page.frames();
+      for (const frame of frames) {
+        try {
+          const numInput = frame.locator('#cardNumber, input[name="cardNumber"], input[autocomplete="cc-number"], input[id*="cardNumber"], input[name="cardnumber"], input[name="number"]').first();
+          if (await numInput.isVisible({ timeout: 500 }).catch(() => false)) {
+            await numInput.click();
+            await numInput.pressSequentially(card_number, { delay: 20 });
+            cardInjected = true;
 
-          const expInput = frame.locator('#cardExpiry, input[name="cardExpiry"], input[autocomplete="cc-exp"], input[id*="cardExpiry"], input[name="exp-date"], input[name="expiry"]').first();
-          if (await expInput.isVisible().catch(() => false)) {
-            await expInput.click();
-            await expInput.pressSequentially(formattedExp, { delay: 20 });
-          }
+            const expInput = frame.locator('#cardExpiry, input[name="cardExpiry"], input[autocomplete="cc-exp"], input[id*="cardExpiry"], input[name="exp-date"], input[name="expiry"]').first();
+            if (await expInput.isVisible({ timeout: 500 }).catch(() => false)) {
+              await expInput.click();
+              await expInput.pressSequentially(formattedExp, { delay: 20 });
+            }
 
-          const cvcInput = frame.locator('#cardCvc, input[name="cardCvc"], input[autocomplete="cc-csc"], input[id*="cardCvc"], input[name="cvc"], input[name="cvv"]').first();
-          if (await cvcInput.isVisible().catch(() => false)) {
-            await cvcInput.click();
-            await cvcInput.pressSequentially(card_cvc, { delay: 20 });
-          }
+            const cvcInput = frame.locator('#cardCvc, input[name="cardCvc"], input[autocomplete="cc-csc"], input[id*="cardCvc"], input[name="cvc"], input[name="cvv"]').first();
+            if (await cvcInput.isVisible({ timeout: 500 }).catch(() => false)) {
+              await cvcInput.click();
+              await cvcInput.pressSequentially(card_cvc, { delay: 20 });
+            }
 
-          const nameInput = frame.locator('#billingName, input[name="billingName"], input[id*="billingName"]').first();
-          if (await nameInput.isVisible().catch(() => false)) {
-            await nameInput.fill(holder_name);
+            const nameInput = frame.locator('#billingName, input[name="billingName"], input[id*="billingName"]').first();
+            if (await nameInput.isVisible({ timeout: 500 }).catch(() => false)) {
+              await nameInput.fill(holder_name);
+            }
+            break;
           }
-          break;
-        }
-      } catch (err) {}
+        } catch (err) {}
+      }
+
+      if (!cardInjected) {
+        try {
+          const mainNum = page.locator('#cardNumber, input[name="cardNumber"], input[autocomplete="cc-number"], input[name="cardnumber"], input[id*="card-number"], input[placeholder*="4242"]').first();
+          if (await mainNum.isVisible({ timeout: 500 }).catch(() => false)) {
+            await mainNum.click();
+            await mainNum.pressSequentially(card_number, { delay: 20 });
+            cardInjected = true;
+            const mainExp = page.locator('#cardExpiry, input[name="cardExpiry"], input[autocomplete="cc-exp"], input[name="exp-date"], input[id*="exp"], input[placeholder*="MM"]').first();
+            if (await mainExp.isVisible({ timeout: 500 }).catch(() => false)) { await mainExp.click(); await mainExp.pressSequentially(formattedExp, { delay: 20 }); }
+            const mainCvc = page.locator('#cardCvc, input[name="cardCvc"], input[autocomplete="cc-csc"], input[name="cvc"], input[id*="cvc"], input[placeholder*="CVC"]').first();
+            if (await mainCvc.isVisible({ timeout: 500 }).catch(() => false)) { await mainCvc.click(); await mainCvc.pressSequentially(card_cvc, { delay: 20 }); }
+            const mainName = page.locator('#billingName, input[name="billingName"]').first();
+            if (await mainName.isVisible({ timeout: 500 }).catch(() => false)) await mainName.fill(holder_name);
+          }
+        } catch (err) {}
+      }
+
+      if (cardInjected) break;
+      await page.waitForTimeout(1000);
     }
 
     if (!cardInjected) {
