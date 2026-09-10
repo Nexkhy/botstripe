@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nelsius PaymentBot — Console de Test & Monitoring en Temps Réel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"Fira Code"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #e2e8f0;
+    }
+    .glass-card {
+      background: rgba(17, 24, 39, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-input {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #f8fafc;
+    }
+    .glass-input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.25);
+      outline: none;
+    }
+    .terminal-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .terminal-scrollbar::-webkit-scrollbar-track {
+      background: #0d1117;
+    }
+    .terminal-scrollbar::-webkit-scrollbar-thumb {
+      background: #30363d;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="font-sans antialiased min-h-screen pb-12 selection:bg-brand-500 selection:text-white">
+
+  <!-- Header Navigation -->
+  <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-brand-500/20">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-base font-bold text-white tracking-wide">Nelsius PaymentBot Studio</h1>
+          <p class="text-xs text-slate-400 font-mono">Microservice Monitoring & Testing Console</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-4">
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span>
+          API ONLINE (Port 4000)
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+      <!-- Left Column: Form & Presets (5 Cols) -->
+      <div class="lg:col-span-5 space-y-6">
+        <div class="glass-card rounded-2xl p-6 shadow-xl">
+          <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-800">
+            <h2 class="text-lg font-bold text-white flex items-center">
+              <svg class="w-5 h-5 mr-2 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 3 0 003-3V8a3 3 3 0 00-3-3H6a3 3 3 0 00-3 3v8a3 3 3 0 003 3z" />
+              </svg>
+              Paramètres du Test Carte
+            </h2>
+            <span class="text-xs text-slate-400 font-mono">Payload JSON</span>
+          </div>
+
+          <form id="paymentForm" onsubmit="runTest(event)" class="space-y-4">
+            
+            <!-- Checkout URL -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">URL de Checkout GeniusPay</label>
+              <input type="url" id="checkout_url" required
+                value="https://geniuspay.ci/checkout/MTX-IFGTOBPB1H"
+                class="w-full glass-input rounded-xl px-3.5 py-2.5 text-sm font-mono focus:ring-0 transition"
+                placeholder="https://geniuspay.ci/checkout/MTX-..." />
+            </div>
+
+            <!-- Card Number -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Numéro de Carte Bancaire</label>
+              <div class="relative">
+                <input type="text" id="card_number" required maxlength="19"
+                  value="5430 0502 3005 2122"
+                  class="w-full glass-input rounded-xl px-3.5 py-2.5 text-sm font-mono tracking-widest focus:ring-0 transition"
+                  placeholder="4242 4242 4242 4242" />
+              </div>
+            </div>
+
+            <!-- Expiry & CVC Grid -->
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Mois Exp.</label>
+                <input type="text" id="card_exp_month" required maxlength="2"
+                  value="02"
+                  class="w-full glass-input rounded-xl px-3 py-2.5 text-sm font-mono text-center focus:ring-0 transition"
+                  placeholder="02" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Année Exp.</label>
+                <input type="text" id="card_exp_year" required maxlength="4"
+                  value="27"
+                  class="w-full glass-input rounded-xl px-3 py-2.5 text-sm font-mono text-center focus:ring-0 transition"
+                  placeholder="27" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Code CVC</label>
+                <input type="text" id="card_cvc" required maxlength="4"
+                  value="948"
+                  class="w-full glass-input rounded-xl px-3 py-2.5 text-sm font-mono text-center focus:ring-0 transition"
+                  placeholder="948" />
+              </div>
+            </div>
+
+            <!-- Holder Name -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Nom du Titulaire</label>
+              <input type="text" id="holder_name" required
+                value="Nelson Siebi"
+                class="w-full glass-input rounded-xl px-3.5 py-2.5 text-sm font-sans focus:ring-0 transition"
+                placeholder="Nelson Siebi" />
+            </div>
+
+            <!-- Email -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Adresse Email</label>
+              <input type="email" id="email" required
+                value="nelson@nelsius.com"
+                class="w-full glass-input rounded-xl px-3.5 py-2.5 text-sm font-sans focus:ring-0 transition"
+                placeholder="client@nelsius.com" />
+            </div>
+
+            <!-- Options -->
+            <div class="pt-2 flex items-center justify-between border-t border-slate-800/80">
+              <label class="flex items-center space-x-2 text-xs font-medium text-slate-300 cursor-pointer">
+                <input type="checkbox" id="headless" checked class="rounded border-slate-700 bg-slate-800 text-brand-600 focus:ring-0" />
+                <span>Mode Headless (Navigateur invisible)</span>
+              </label>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="pt-4">
+              <button type="submit" id="btnSubmit"
+                class="w-full py-3.5 px-4 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 active:scale-[0.99] transition shadow-lg shadow-brand-500/25 flex items-center justify-center space-x-2">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Exécuter le Bot Carte</span>
+              </button>
+            </div>
+
+          </form>
+        </div>
+
+        <!-- Presets quick buttons -->
+        <div class="glass-card rounded-2xl p-4">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Cartes de test rapides</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" onclick="setPreset('4242', 'Stripe Valid Test')" class="px-3 py-2 text-xs rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition text-left">
+              💳 Test Stripe Valid (4242)
+            </button>
+            <button type="button" onclick="setPreset('5430', 'UBA Card Test')" class="px-3 py-2 text-xs rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition text-left">
+              💳 Carte UBA (5430)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Metrics, Console Log & Screenshots (7 Cols) -->
+      <div class="lg:col-span-7 space-y-6">
+
+        <!-- Metrics Dashboard Panel -->
+        <div class="grid grid-cols-3 gap-4">
+          <div class="glass-card rounded-2xl p-4 border border-slate-800">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Statut Exécution</p>
+            <div class="mt-2 flex items-center">
+              <span id="badgeStatus" class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                IDLE
+              </span>
+            </div>
+          </div>
+          
+          <div class="glass-card rounded-2xl p-4 border border-slate-800">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Temps Écoulé</p>
+            <p id="timerDisplay" class="mt-1 text-2xl font-extrabold text-white font-mono">0.00 s</p>
+          </div>
+
+          <div class="glass-card rounded-2xl p-4 border border-slate-800">
+            <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Captures d'écran</p>
+            <p id="screenshotCount" class="mt-1 text-2xl font-extrabold text-brand-400 font-mono">0</p>
+          </div>
+        </div>
+
+        <!-- Terminal Log Console -->
+        <div class="glass-card rounded-2xl overflow-hidden shadow-2xl border border-slate-800">
+          <div class="bg-slate-900/90 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <div class="w-3 h-3 rounded-full bg-rose-500/80"></div>
+              <div class="w-3 h-3 rounded-full bg-amber-500/80"></div>
+              <div class="w-3 h-3 rounded-full bg-emerald-500/80"></div>
+              <span class="ml-2 text-xs font-mono font-semibold text-slate-400">CONSOLE EN TEMPS RÉEL (STDOUT / STDERR)</span>
+            </div>
+            <button onclick="clearConsole()" class="text-xs font-mono text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition">
+              Effacer
+            </button>
+          </div>
+          
+          <div id="consoleLog" class="p-4 bg-[#0d1117] font-mono text-xs text-slate-300 h-80 overflow-y-auto terminal-scrollbar space-y-1.5 leading-relaxed">
+            <div class="text-slate-500">[CONSOLE READY] En attente du lancement du bot...</div>
+          </div>
+        </div>
+
+        <!-- Screenshots Gallery -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center justify-between">
+            <span>Captures Étape par Étape</span>
+            <span class="text-xs font-mono font-normal text-slate-400">Updated automatically</span>
+          </h3>
+          
+          <div id="screenshotsGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="aspect-video rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600 text-xs font-mono">
+              Étape 1
+            </div>
+            <div class="aspect-video rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600 text-xs font-mono">
+              Étape 2
+            </div>
+            <div class="aspect-video rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600 text-xs font-mono">
+              Étape 3
+            </div>
+            <div class="aspect-video rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600 text-xs font-mono">
+              Étape 4
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <script>
+    let timerInterval = null;
+    let startTime = null;
+
+    function formatTime(ms) {
+      return (ms / 1000).toFixed(2) + ' s';
+    }
+
+    function clearConsole() {
+      const consoleLog = document.getElementById('consoleLog');
+      consoleLog.innerHTML = '<div class="text-slate-500">[CONSOLE CLEARED] Console réinitialisée.</div>';
+    }
+
+    function appendLog(msg, type = 'info') {
+      const consoleLog = document.getElementById('consoleLog');
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      
+      let typeStyle = 'text-slate-300';
+      if (type === 'step') typeStyle = 'text-indigo-400 font-semibold';
+      if (type === 'error') typeStyle = 'text-rose-400 font-bold';
+      if (type === 'success') typeStyle = 'text-emerald-400 font-bold';
+      if (type === 'warn') typeStyle = 'text-amber-400 font-semibold';
+
+      div.className = `${typeStyle} tracking-wide break-all`;
+      div.innerHTML = `<span class="text-slate-600 font-normal mr-2">[${time}]</span>${msg}`;
+      consoleLog.appendChild(div);
+      consoleLog.scrollTop = consoleLog.scrollHeight;
+    }
+
+    function updateStatus(status) {
+      const badge = document.getElementById('badgeStatus');
+      badge.innerText = status;
+
+      badge.className = "inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-mono font-bold border ";
+      
+      if (status === 'RUNNING') {
+        badge.className += "bg-indigo-500/20 text-indigo-300 border-indigo-500/30 animate-pulse";
+      } else if (status === 'SUCCESS') {
+        badge.className += "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+      } else if (status === 'DECLINED' || status === '3DS_REQUIRED') {
+        badge.className += "bg-amber-500/20 text-amber-400 border-amber-500/30";
+      } else if (status === 'ERROR' || status === 'TIMEOUT') {
+        badge.className += "bg-rose-500/20 text-rose-400 border-rose-500/30";
+      } else {
+        badge.className += "bg-slate-800 text-slate-400 border-slate-700";
+      }
+    }
+
+    function setPreset(type, name) {
+      if (type === '4242') {
+        document.getElementById('card_number').value = '4242 4242 4242 4242';
+        document.getElementById('card_exp_month').value = '12';
+        document.getElementById('card_exp_year').value = '28';
+        document.getElementById('card_cvc').value = '123';
+      } else if (type === '5430') {
+        document.getElementById('card_number').value = '5430 0502 3005 2122';
+        document.getElementById('card_exp_month').value = '02';
+        document.getElementById('card_exp_year').value = '27';
+        document.getElementById('card_cvc').value = '948';
+      }
+      appendLog(`[PRESET] Carte chargée: ${name}`);
+    }
+
+    async function runTest(event) {
+      event.preventDefault();
+
+      const btnSubmit = document.getElementById('btnSubmit');
+      btnSubmit.disabled = true;
+      btnSubmit.classList.add('opacity-50');
+
+      updateStatus('RUNNING');
+      document.getElementById('consoleLog').innerHTML = '';
+      appendLog('🚀 Lancement de l\'exécution du Bot de paiement...');
+
+      startTime = Date.now();
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        document.getElementById('timerDisplay').innerText = formatTime(Date.now() - startTime);
+      }, 50);
+
+      const payload = {
+        checkout_url: document.getElementById('checkout_url').value,
+        card_number: document.getElementById('card_number').value.replace(/\D/g, ''),
+        card_exp_month: document.getElementById('card_exp_month').value,
+        card_exp_year: document.getElementById('card_exp_year').value,
+        card_cvc: document.getElementById('card_cvc').value,
+        holder_name: document.getElementById('holder_name').value,
+        email: document.getElementById('email').value,
+        headless: document.getElementById('headless').checked
+      };
+
+      try {
+        const response = await fetch('/api/v1/process-card-stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-KEY': 'nelsius_secret_bot_key_2026'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+
+          for (const part of parts) {
+            const line = part.trim();
+            if (line.startsWith('data: ')) {
+              try {
+                const eventData = JSON.parse(line.replace('data: ', ''));
+                handleStreamEvent(eventData);
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (err) {
+        appendLog(`[ERROR] Échec de la connexion API: ${err.message}`, 'error');
+        updateStatus('ERROR');
+      } finally {
+        clearInterval(timerInterval);
+        btnSubmit.disabled = false;
+        btnSubmit.classList.remove('opacity-50');
+      }
+    }
+
+    function handleStreamEvent(eventData) {
+      if (eventData.type === 'log') {
+        let msg = eventData.message;
+        let type = 'info';
+        if (msg.includes('Navigating') || msg.includes('Injecting') || msg.includes('Submitting') || msg.includes('Launching')) {
+          type = 'step';
+        }
+        appendLog(msg, type);
+      } else if (eventData.type === 'error') {
+        appendLog(`❌ Erreur: ${eventData.message}`, 'error');
+        updateStatus('ERROR');
+      } else if (eventData.type === 'result') {
+        const res = eventData.result;
+        updateStatus(res.status || (res.success ? 'SUCCESS' : 'DECLINED'));
+        
+        if (res.success) {
+          appendLog(`✅ RÉUSSITE DU BOT: ${res.message}`, 'success');
+        } else {
+          appendLog(`⚠️ RÉSULTAT DU BOT: ${res.message}`, 'warn');
+        }
+
+        if (res.screenshots && res.screenshots.length > 0) {
+          document.getElementById('screenshotCount').innerText = res.screenshots.length;
+          renderScreenshots(res.screenshots);
+        }
+      }
+    }
+
+    function renderScreenshots(screenshots) {
+      const grid = document.getElementById('screenshotsGrid');
+      grid.innerHTML = '';
+
+      screenshots.forEach((shot, index) => {
+        const filename = shot.file.split(/[\\/]/).pop();
+        const imgUrl = `/screenshots/${filename}`;
+        
+        const card = document.createElement('div');
+        card.className = "group relative rounded-xl overflow-hidden border border-slate-800 bg-slate-900 shadow-md hover:border-brand-500 transition cursor-pointer";
+        card.onclick = () => window.open(imgUrl, '_blank');
+        card.innerHTML = `
+          <img src="${imgUrl}" alt="${shot.step}" class="w-full h-24 object-cover group-hover:scale-105 transition duration-300" />
+          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent p-2 flex items-end">
+            <span class="text-[10px] font-mono text-slate-300 font-semibold truncate">${shot.step}</span>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+  </script>
+
+</body>
+</html>

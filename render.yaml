@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: botstripe
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: BOT_API_KEY
+        value: nelsius_secret_bot_key_2026
+      - key: HEADLESS
+        value: "true"
