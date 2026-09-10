@@ -91,7 +91,7 @@ async function runBot() {
         fs.mkdirSync(screenshots_dir, { recursive: true });
       }
       const filepath = path.join(screenshots_dir, `${stepName}_${Date.now()}.png`);
-      await page.screenshot({ path: filepath, fullPage: true });
+      await page.screenshot({ path: filepath, fullPage: false });
       capturedScreenshots.push({ step: stepName, file: filepath });
     } catch (err) {}
   };
@@ -138,29 +138,24 @@ async function runBot() {
     // Step 1: Navigate to Checkout URL
     console.error(`[BOT_STEP] Navigating to checkout URL: ${checkout_url}`);
     try {
-      await page.goto(checkout_url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await page.goto(checkout_url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     } catch (err) {
       if (page.url() && page.url() !== 'about:blank') {
         console.error(`[BOT_STEP] Warning: Navigation timeout reached but page partially loaded (${page.url()}), continuing...`);
       } else {
         try {
-          await page.goto(checkout_url, { waitUntil: 'commit', timeout: 20000 });
+          await page.goto(checkout_url, { waitUntil: 'commit', timeout: 15000 });
         } catch (retryErr) {
           throw err;
         }
       }
     }
 
-    try {
-      await page.waitForLoadState('networkidle', { timeout: 8000 });
-    } catch (e) {}
-
-    await page.waitForTimeout(1500);
     await takeScreenshot(page, 'step1_landing_page');
 
     // Step 2: Click "Continuer" on GeniusPay Landing Page if present
     console.error('[BOT_STEP] Checking for Continuer button...');
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(300);
 
     const continuerClicked = await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('button, a, [role="button"]'));
@@ -183,10 +178,9 @@ async function runBot() {
 
     if (continuerClicked) {
       console.error('[BOT_STEP] Continuer clicked, waiting for Stripe navigation...');
-      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
+      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 6000 }).catch(() => {});
     }
 
-    await page.waitForTimeout(1200);
     await takeScreenshot(page, 'step2_card_option_selected');
 
     // Step 3: Fill customer details if present
