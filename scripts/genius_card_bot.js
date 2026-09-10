@@ -1,9 +1,9 @@
 /**
  * GeniusPay & Stripe Card Payment Automation Bot with Step-by-Step Screenshots
- * Isolated Microservice Bot Script for Nelsius PaymentBot
+ * Isolated Microservice Bot Script for Nelsius PaymentBot (Playwright Engine)
  */
 
-const puppeteer = require('puppeteer');
+const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -23,6 +23,7 @@ process.env.TMPDIR = systemTmp;
 
 async function runBot() {
   let browser = null;
+  let context = null;
   const inputArg = process.argv[2] || '{}';
   let input = {};
 
@@ -32,22 +33,19 @@ async function runBot() {
       status: 'TIMEOUT',
       message: 'Le bot de paiement a dépassé le délai maximum de 45 secondes.'
     }));
-    if (browser && browser.process()) {
-      try { browser.process().kill('SIGKILL'); } catch (e) {}
+    if (browser) {
+      try { browser.close().catch(() => {}); } catch (e) {}
     }
     process.exit(1);
   }, 45000);
 
   const safeExit = async (code = 0) => {
     clearTimeout(globalTimer);
+    if (context) {
+      try { await context.close(); } catch (e) {}
+    }
     if (browser) {
-      const forceKill = setTimeout(() => {
-        if (browser && browser.process()) {
-          try { browser.process().kill('SIGKILL'); } catch (e) {}
-        }
-      }, 1500);
       try { await browser.close(); } catch (e) {}
-      clearTimeout(forceKill);
     }
     process.exit(code);
   };
@@ -137,20 +135,33 @@ async function runBot() {
       chromeArgs.push(`--host-resolver-rules=MAP ${targetHost} ${resolvedIp}, MAP *.${targetHost} ${resolvedIp}`);
     }
 
-    console.error('[BOT_STEP] Launching headless browser...');
+    console.error('[BOT_STEP] Launching Playwright Chromium...');
     const launchOpts = {
       headless: headless ? true : false,
       timeout: 25000,
       args: chromeArgs
     };
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-      launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
+      launchOpts.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
     }
-    browser = await puppeteer.launch(launchOpts);
 
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 900 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+    browser = await chromium.launch(launchOpts);
+    context = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      ignoreHTTPSErrors: true,
+      locale: 'fr-FR',
+      timezoneId: 'Africa/Douala'
+    });
+
+    // Stealth evasion script injection
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'languages', { get: () => ['fr-FR', 'fr', 'en-US', 'en'] });
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    });
+
+    const page = await context.newPage();
 
     // Step 1: Navigate to Checkout URL
     console.error(`[BOT_STEP] Navigating to checkout URL: ${checkout_url}`);
@@ -167,7 +178,7 @@ async function runBot() {
 
     // Step 2: Click "Continuer" on GeniusPay Landing Page if present
     console.error('[BOT_STEP] Checking for Continuer button...');
-    await new Promise(r => setTimeout(r, 600));
+    await page.waitForTimeout(600);
 
     const continuerClicked = await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('button, a, [role="button"]'));
@@ -193,21 +204,19 @@ async function runBot() {
       await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
     }
 
-    await new Promise(r => setTimeout(r, 1200));
+    await page.waitForTimeout(1200);
     await takeScreenshot(page, 'step2_card_option_selected');
 
     // Step 3: Fill customer details if present
     console.error('[BOT_STEP] Filling customer profile data...');
     try {
-      const emailInput = await page.$('input[type="email"], input[name="email"]');
-      if (emailInput && email) {
-        await emailInput.click({ clickCount: 3 });
-        await emailInput.type(email);
+      const emailInput = page.locator('input[type="email"], input[name="email"]').first();
+      if (await emailInput.isVisible().catch(() => false) && email) {
+        await emailInput.fill(email);
       }
-      const nameInput = await page.$('input[name="name"], input[name="holder"], input[name="cardholder"]');
-      if (nameInput && holder_name) {
-        await nameInput.click({ clickCount: 3 });
-        await nameInput.type(holder_name);
+      const nameInput = page.locator('input[name="name"], input[name="holder"], input[name="cardholder"]').first();
+      if (await nameInput.isVisible().catch(() => false) && holder_name) {
+        await nameInput.fill(holder_name);
       }
     } catch (e) {}
 
@@ -215,101 +224,66 @@ async function runBot() {
     console.error('[BOT_STEP] Injecting card number, expiration & CVC...');
     let cardInjected = false;
 
-    if (page.url().includes('stripe.com')) {
+    // Check frames (Stripe inputs often live in iFrames)
+    const frames = page.frames();
+    for (const frame of frames) {
       try {
-        const frames = page.frames();
-        for (const frame of frames) {
-          const numInput = await frame.$('#cardNumber, input[name="cardNumber"], input[autocomplete="cc-number"], input[id*="cardNumber"]');
-          if (numInput) {
-            await numInput.click({ clickCount: 3 });
-            await numInput.type(card_number, { delay: 20 });
-            cardInjected = true;
-          }
-          const expInput = await frame.$('#cardExpiry, input[name="cardExpiry"], input[autocomplete="cc-exp"], input[id*="cardExpiry"]');
-          if (expInput) {
-            await expInput.click({ clickCount: 3 });
-            await expInput.type(formattedExp, { delay: 20 });
-          }
-          const cvcInput = await frame.$('#cardCvc, input[name="cardCvc"], input[autocomplete="cc-csc"], input[id*="cardCvc"]');
-          if (cvcInput) {
-            await cvcInput.click({ clickCount: 3 });
-            await cvcInput.type(card_cvc, { delay: 20 });
-          }
-          const nameInput = await frame.$('#billingName, input[name="billingName"], input[id*="billingName"]');
-          if (nameInput) {
-            await nameInput.click({ clickCount: 3 });
-            await nameInput.press('Backspace');
-            await nameInput.type(holder_name, { delay: 20 });
-          }
-        }
+        const numInput = frame.locator('#cardNumber, input[name="cardNumber"], input[autocomplete="cc-number"], input[id*="cardNumber"], input[name="cardnumber"], input[name="number"]').first();
+        if (await numInput.isVisible().catch(() => false)) {
+          await numInput.click();
+          await numInput.pressSequentially(card_number, { delay: 20 });
+          cardInjected = true;
 
-        if (!cardInjected) {
-          const mainNum = await page.$('#cardNumber, input[name="cardNumber"], input[autocomplete="cc-number"]');
-          if (mainNum) {
-            await mainNum.click({ clickCount: 3 });
-            await mainNum.type(card_number, { delay: 20 });
-            cardInjected = true;
+          const expInput = frame.locator('#cardExpiry, input[name="cardExpiry"], input[autocomplete="cc-exp"], input[id*="cardExpiry"], input[name="exp-date"], input[name="expiry"]').first();
+          if (await expInput.isVisible().catch(() => false)) {
+            await expInput.click();
+            await expInput.pressSequentially(formattedExp, { delay: 20 });
           }
-          const mainExp = await page.$('#cardExpiry, input[name="cardExpiry"], input[autocomplete="cc-exp"]');
-          if (mainExp) {
-            await mainExp.click({ clickCount: 3 });
-            await mainExp.type(formattedExp, { delay: 20 });
+
+          const cvcInput = frame.locator('#cardCvc, input[name="cardCvc"], input[autocomplete="cc-csc"], input[id*="cardCvc"], input[name="cvc"], input[name="cvv"]').first();
+          if (await cvcInput.isVisible().catch(() => false)) {
+            await cvcInput.click();
+            await cvcInput.pressSequentially(card_cvc, { delay: 20 });
           }
-          const mainCvc = await page.$('#cardCvc, input[name="cardCvc"], input[autocomplete="cc-csc"]');
-          if (mainCvc) {
-            await mainCvc.click({ clickCount: 3 });
-            await mainCvc.type(card_cvc, { delay: 20 });
+
+          const nameInput = frame.locator('#billingName, input[name="billingName"], input[id*="billingName"]').first();
+          if (await nameInput.isVisible().catch(() => false)) {
+            await nameInput.fill(holder_name);
           }
-          const mainName = await page.$('#billingName, input[name="billingName"]');
-          if (mainName) {
-            await mainName.click({ clickCount: 3 });
-            await mainName.press('Backspace');
-            await mainName.type(holder_name, { delay: 20 });
-          }
+          break;
         }
       } catch (err) {}
     }
 
     if (!cardInjected) {
-      const frames = page.frames();
-      const stripeFrame = frames.find(f => f.url().includes('stripe') || f.name().includes('stripe'));
-      if (stripeFrame) {
-        try {
-          const numInput = await stripeFrame.$('input[name="cardnumber"], input[name="number"]');
-          if (numInput) {
-            await numInput.type(card_number, { delay: 20 });
-          }
-          const expInput = await stripeFrame.$('input[name="exp-date"], input[name="expiry"]');
-          if (expInput) {
-            await expInput.type(formattedExp, { delay: 20 });
-          }
-          const cvcInput = await stripeFrame.$('input[name="cvc"], input[name="cvv"]');
-          if (cvcInput) {
-            await cvcInput.type(card_cvc, { delay: 20 });
-          }
+      try {
+        const mainNum = page.locator('#cardNumber, input[name="cardNumber"], input[autocomplete="cc-number"], input[name="cardnumber"], input[id*="card-number"], input[placeholder*="4242"]').first();
+        if (await mainNum.isVisible().catch(() => false)) {
+          await mainNum.click();
+          await mainNum.pressSequentially(card_number, { delay: 20 });
           cardInjected = true;
-        } catch (err) {}
-      }
+
+          const mainExp = page.locator('#cardExpiry, input[name="cardExpiry"], input[autocomplete="cc-exp"], input[name="exp-date"], input[id*="exp"], input[placeholder*="MM"]').first();
+          if (await mainExp.isVisible().catch(() => false)) {
+            await mainExp.click();
+            await mainExp.pressSequentially(formattedExp, { delay: 20 });
+          }
+
+          const mainCvc = page.locator('#cardCvc, input[name="cardCvc"], input[autocomplete="cc-csc"], input[name="cvc"], input[id*="cvc"], input[placeholder*="CVC"]').first();
+          if (await mainCvc.isVisible().catch(() => false)) {
+            await mainCvc.click();
+            await mainCvc.pressSequentially(card_cvc, { delay: 20 });
+          }
+
+          const mainName = page.locator('#billingName, input[name="billingName"]').first();
+          if (await mainName.isVisible().catch(() => false)) {
+            await mainName.fill(holder_name);
+          }
+        }
+      } catch (err) {}
     }
 
-    if (!cardInjected) {
-      const numInput = await page.$('input[name="cardnumber"], input[id*="card-number"], input[placeholder*="4242"], input[autocomplete="cc-number"], input[name="cardNumber"]');
-      if (numInput) {
-        await numInput.type(card_number, { delay: 20 });
-      }
-
-      const expInput = await page.$('input[name="exp-date"], input[id*="exp"], input[placeholder*="MM"], input[autocomplete="cc-exp"], input[name="cardExpiry"]');
-      if (expInput) {
-        await expInput.type(formattedExp, { delay: 20 });
-      }
-
-      const cvcInput = await page.$('input[name="cvc"], input[id*="cvc"], input[placeholder*="CVC"], input[autocomplete="cc-csc"], input[name="cardCvc"]');
-      if (cvcInput) {
-        await cvcInput.type(card_cvc, { delay: 20 });
-      }
-    }
-
-    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 800)));
+    await page.waitForTimeout(800);
     await takeScreenshot(page, 'step3_form_filled');
 
     // Step 5: Click Submit / Pay Button
@@ -334,10 +308,10 @@ async function runBot() {
     let detectedError = null;
 
     for (let poll = 0; poll < 14; poll++) {
-      await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 500))).catch(() => {});
+      await page.waitForTimeout(500);
       currentUrl = page.url();
       pageText = await page.evaluate(() => document.body ? document.body.innerText : '').catch(() => '');
-      
+
       detectedError = await page.evaluate(() => {
         const alertEl = document.querySelector('.card-errors, [role="alert"], .Error, .error-message, .alert-danger, .InputElement-error, .FormError');
         if (alertEl && alertEl.textContent && alertEl.textContent.trim()) {

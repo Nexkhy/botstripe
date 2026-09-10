@@ -1,6 +1,6 @@
 # Nelsius PaymentBot Microservice
 
-Microservice de paiement par carte bancaire automatisé (Puppeteer / Chrome Headless).
+Microservice de paiement par carte bancaire automatisé (Playwright Chromium / Headless).
 
 Ce projet est **100% indépendant** et peut être hébergé sur n'importe quel serveur (VPS Linux, VPS Windows, Docker) disposant de Node.js v18+.
 
