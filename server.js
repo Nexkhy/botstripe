@@ -72,9 +72,29 @@ async function runCardBot({ checkout_url, card_number, card_exp_month, card_exp_
     } catch (err) {}
   };
 
+  // Auto-détection du chemin Chromium système (Linux / VPS)
+  const findSystemChromium = () => {
+    const candidates = [
+      process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+      process.env.PUPPETEER_EXECUTABLE_PATH,
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/snap/bin/chromium',
+      '/usr/local/bin/chromium'
+    ].filter(Boolean);
+    const fsSync = require('fs');
+    for (const p of candidates) {
+      try { if (fsSync.existsSync(p)) return p; } catch (e) {}
+    }
+    return null;
+  };
+
   try {
     onProgress('Lancement du navigateur Playwright Chromium...');
-    browser = await chromium.launch({
+    const chromiumPath = findSystemChromium();
+    const launchArgs = {
       headless: HEADLESS,
       args: [
         '--no-sandbox',
@@ -82,7 +102,12 @@ async function runCardBot({ checkout_url, card_number, card_exp_month, card_exp_
         '--disable-dev-shm-usage',
         '--disable-blink-features=AutomationControlled'
       ]
-    });
+    };
+    if (chromiumPath) {
+      launchArgs.executablePath = chromiumPath;
+      onProgress(`Utilisation du Chromium système : ${chromiumPath}`);
+    }
+    browser = await chromium.launch(launchArgs);
 
     context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
