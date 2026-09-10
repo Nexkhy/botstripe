@@ -7,11 +7,6 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const dns = require('dns');
-
-try {
-  dns.setDefaultResultOrder('ipv4first');
-} catch (e) {}
 
 const systemTmp = process.env.TEMP || process.env.TMP || process.env.TMPDIR || os.tmpdir() || path.join(__dirname, '..', 'tmp');
 if (!fs.existsSync(systemTmp)) {
@@ -105,20 +100,11 @@ async function runBot() {
   const formattedExp = `${card_exp_month.toString().padStart(2, '0')}/${expYearShort}`;
 
   try {
-    let resolvedIp = null;
-    let targetHost = '';
     const chromeArgs = [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-gpu',
       '--disable-dev-shm-usage',
-      '--disable-blink-features=AutomationControlled',
-      '--disable-web-security',
-      '--ignore-certificate-errors',
-      '--ignore-certificate-errors-spki-list',
-      '--allow-insecure-localhost',
-      '--no-first-run',
-      '--no-default-browser-check'
+      '--disable-blink-features=AutomationControlled'
     ];
 
     console.error('[BOT_STEP] Launching Playwright Chromium...');
