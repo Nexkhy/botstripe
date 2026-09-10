@@ -107,38 +107,24 @@ async function runBot() {
   try {
     let resolvedIp = null;
     let targetHost = '';
-    try {
-      targetHost = new URL(checkout_url).hostname;
-      const ips = await dns.promises.resolve4(targetHost).catch(() => null);
-      if (ips && ips.length > 0) {
-        resolvedIp = ips[0];
-      } else if (targetHost.includes('geniuspay')) {
-        resolvedIp = '104.21.46.124';
-      }
-    } catch (e) {}
-
     const chromeArgs = [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-gpu',
       '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
       '--disable-web-security',
       '--ignore-certificate-errors',
       '--ignore-certificate-errors-spki-list',
       '--allow-insecure-localhost',
       '--no-first-run',
-      '--no-default-browser-check',
-      '--dns-result-order=ipv4first'
+      '--no-default-browser-check'
     ];
-
-    if (resolvedIp && targetHost) {
-      chromeArgs.push(`--host-resolver-rules=MAP ${targetHost} ${resolvedIp}, MAP *.${targetHost} ${resolvedIp}`);
-    }
 
     console.error('[BOT_STEP] Launching Playwright Chromium...');
     const launchOpts = {
       headless: headless ? true : false,
-      timeout: 25000,
+      timeout: 30000,
       args: chromeArgs
     };
     if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
@@ -148,7 +134,7 @@ async function runBot() {
     browser = await chromium.launch(launchOpts);
     context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
       ignoreHTTPSErrors: true,
       locale: 'fr-FR',
       timezoneId: 'Africa/Douala'
@@ -165,15 +151,25 @@ async function runBot() {
 
     // Step 1: Navigate to Checkout URL
     console.error(`[BOT_STEP] Navigating to checkout URL: ${checkout_url}`);
-    let navErr = null;
     try {
-      await page.goto(checkout_url, { waitUntil: 'domcontentloaded', timeout: 12000 });
+      await page.goto(checkout_url, { waitUntil: 'domcontentloaded', timeout: 45000 });
     } catch (err) {
-      navErr = err;
+      if (page.url() && page.url() !== 'about:blank') {
+        console.error(`[BOT_STEP] Warning: Navigation timeout reached but page partially loaded (${page.url()}), continuing...`);
+      } else {
+        try {
+          await page.goto(checkout_url, { waitUntil: 'commit', timeout: 20000 });
+        } catch (retryErr) {
+          throw err;
+        }
+      }
     }
-    if (navErr) {
-      throw navErr;
-    }
+
+    try {
+      await page.waitForLoadState('networkidle', { timeout: 8000 });
+    } catch (e) {}
+
+    await page.waitForTimeout(1500);
     await takeScreenshot(page, 'step1_landing_page');
 
     // Step 2: Click "Continuer" on GeniusPay Landing Page if present
