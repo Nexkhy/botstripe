@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM node:20-slim
 
 # Install Chromium and required libraries for Playwright on Linux/Render
 RUN apt-get update && apt-get install -y \
