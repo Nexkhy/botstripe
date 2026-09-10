@@ -26,13 +26,13 @@ async function runBot() {
     console.log(JSON.stringify({
       success: false,
       status: 'TIMEOUT',
-      message: 'Le bot de paiement a dépassé le délai maximum de 45 secondes.'
+      message: 'Le bot de paiement a dépassé le délai maximum de 110 secondes.'
     }));
     if (browser) {
       try { browser.close().catch(() => {}); } catch (e) {}
     }
     process.exit(1);
-  }, 45000);
+  }, 110000);
 
   const safeExit = async (code = 0) => {
     clearTimeout(globalTimer);
@@ -278,18 +278,18 @@ async function runBot() {
 
     console.error('[BOT_STEP] Waiting for bank/Stripe response...');
 
-    // Step 6: Poll for response up to 7 seconds max
+    // Step 6: Attente intelligente de la réponse (max 30s)
     let currentUrl = page.url();
     let pageText = '';
     let detectedError = null;
 
-    for (let poll = 0; poll < 14; poll++) {
-      await page.waitForTimeout(500);
-      currentUrl = page.url();
+    for (let poll = 0; poll < 30; poll++) {
+      await page.waitForTimeout(1000);
+      try { currentUrl = page.url(); } catch (e) {}
       pageText = await page.evaluate(() => document.body ? document.body.innerText : '').catch(() => '');
 
       detectedError = await page.evaluate(() => {
-        const alertEl = document.querySelector('.card-errors, [role="alert"], .Error, .error-message, .alert-danger, .InputElement-error, .FormError');
+        const alertEl = document.querySelector('.card-errors, [role="alert"], .Error, .error-message, .alert-danger, .InputElement-error, .FormError, .p-FieldError, .ErrorMessage');
         if (alertEl && alertEl.textContent && alertEl.textContent.trim()) {
           return alertEl.textContent.trim();
         }
@@ -299,17 +299,9 @@ async function runBot() {
       if (detectedError) break;
 
       const lowerText = pageText.toLowerCase();
-      if (currentUrl.includes('3d') || currentUrl.includes('acs') || currentUrl.includes('bank') || lowerText.includes('3d secure') || lowerText.includes('code de confirmation')) {
-        break;
-      }
-
-      if (currentUrl.includes('success') || currentUrl.includes('confirm') || lowerText.includes('succès') || lowerText.includes('réussi') || lowerText.includes('thank you')) {
-        break;
-      }
-
-      if (lowerText.includes('décliné') || lowerText.includes('refusé') || lowerText.includes('failed') || lowerText.includes('insufficient') || lowerText.includes('invalid') || lowerText.includes('invalide') || lowerText.includes('declined') || lowerText.includes('incorrect') || lowerText.includes('échec')) {
-        break;
-      }
+      if (currentUrl.includes('3d') || currentUrl.includes('acs') || currentUrl.includes('bank') || lowerText.includes('3d secure') || lowerText.includes('code de confirmation')) break;
+      if (currentUrl.includes('success') || currentUrl.includes('confirm') || lowerText.includes('succès') || lowerText.includes('réussi') || lowerText.includes('thank you')) break;
+      if (lowerText.includes('décliné') || lowerText.includes('refusé') || lowerText.includes('failed') || lowerText.includes('insufficient') || lowerText.includes('invalid') || lowerText.includes('invalide') || lowerText.includes('declined') || lowerText.includes('incorrect') || lowerText.includes('échec')) break;
     }
 
     await takeScreenshot(page, 'step4_after_submit');
